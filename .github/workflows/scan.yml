@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/30 0-5,12-14 * * 1-5"
   workflow_dispatch:
+    inputs:
+      forzar:
+        description: "Enviar informe aunque no haya setup (para probar)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,7 +31,12 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CAPITAL: ${{ secrets.CAPITAL }}
-        run: python bot.py
+        run: |
+          if [[ "${{ inputs.forzar }}" == "true" ]]; then
+            python bot.py --forzar
+          else
+            python bot.py
+          fi
       - name: Guardar estado (anti-spam)
         run: |
           if [[ -n $(git status --porcelain estado.json) ]]; then
