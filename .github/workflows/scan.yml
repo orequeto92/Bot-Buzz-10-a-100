@@ -2,7 +2,7 @@ name: Radar del Reto (LBank)
 
 on:
   schedule:
-    - cron: "*/30 0-5,12-14 * * 1-5"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       forzar:
