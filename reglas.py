@@ -16,7 +16,13 @@ WATCHLIST = ["ETHUSDT", "SOLUSDT", "ADAUSDT", "HYPEUSDT", "WLDUSDT", "LDOUSDT", 
 TFS = ("4H", "1H", "15m")
 MAJORS_ORDEN_GRANDE = {"BTC", "BNB"}  # no dimensionan con $10
 
-RIESGO_PCT = 2.0
+# NOTA (5-ago-2026): se PROBO y se DESCARTO un filtro de regimen por ratio de
+# eficiencia (tendencia vs latigazo). Medido sobre 90 dias y 76 operaciones, el ER
+# de las ganadoras y el de las perdedoras es el mismo (0.153 vs 0.150 a 1 dia; a 7
+# dias sale incluso al reves). No separa, asi que ningun umbral sirve. No volver a
+# intentarlo por esta via sin una metrica nueva. Ver diag_er.py y barrido_er.py.
+
+RIESGO_PCT = 4.0      # medio Kelly sobre el edge medido (5-ago-2026); antes 2%
 SL_MIN_PCT = 1.5
 SL_MAX_PCT = 4.0
 FEE_LADO = 0.0006

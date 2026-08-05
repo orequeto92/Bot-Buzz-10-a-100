@@ -2,6 +2,9 @@ name: Radar del Reto (LBank)
 
 on:
   schedule:
+    # Cada 15 min, TODOS los dias: asi los comandos de Telegram se responden
+    # siempre (con <=15 min de espera). Las alertas proactivas las filtra el
+    # propio bot.py (solo ventanas buenas de Medellin y solo entre semana).
     - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
@@ -26,6 +29,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      # Sin dependencias: solo libreria estandar + APIs publicas.
       - name: Escanear LBank y alertar
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}

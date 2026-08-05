@@ -200,8 +200,10 @@ def main():
     ahora = time.time()
     nuevos = []
     for s in res["setups"]:
-        if s["calidad"] == "B":
-            continue  # proactivo solo A/A+
+        # Las [B] TAMBIEN se avisan (cambio del 5-ago-2026). El backtest de 90 dias
+        # mostro que son 61 de las 77 operaciones y aportan +11.0R de los +12.0R:
+        # filtrarlas dejaba el sistema en +1.0R. No es que sean mejores que las [A]
+        # (la diferencia es ruido, t=0.37), es que ahi esta casi toda la muestra.
         f = firma(s)
         if estado["alertas"].get(f) and ahora - estado["alertas"][f] < REPETIR_TRAS_H * 3600:
             continue
