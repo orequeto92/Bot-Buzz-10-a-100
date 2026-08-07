@@ -111,7 +111,8 @@ def cabecera(r, ses):
         L.append(m.strip())
     if ses[2]:
         L.append("⚠️ <i>Fin de semana: el plan recomienda cautela.</i>")
-    L.append(f"💵 Reto: saldo ${SALDO_VIS[0]:.2f} · riesgo 2% · freno 2 SL")
+    # el % se lee de reglas.py: si se cambia el riesgo, la cabecera no puede mentir
+    L.append(f"💵 Reto: saldo ${SALDO_VIS[0]:.2f} · riesgo {reglas.RIESGO_PCT:g}% · freno 2 SL")
     return "\n".join(L)
 
 
