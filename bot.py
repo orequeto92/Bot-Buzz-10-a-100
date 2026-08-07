@@ -219,6 +219,15 @@ def main():
         enviar("🔔 <b>OPORTUNIDAD DETECTADA</b>\n\n" + cabecera(res, ses) + "\n\n" +
                "\n\n➖➖➖\n\n".join(fmt_setup(s) for s in nuevos))
         print("Enviadas %d alertas" % len(nuevos))
+        # BITACORA DE PAPEL: se anota cada señal enviada con sus niveles para poder
+        # medir despues, con precios reales, si el sistema gana o pierde. No implica
+        # operar: es el registro del forward-test. Lo persiste el workflow.
+        hist = estado.setdefault("historial", [])
+        for s in nuevos:
+            hist.append({"t": int(ahora), "symbol": s["symbol"], "lado": s["lado"],
+                         "calidad": s["calidad"], "entrada": s["entrada"], "sl": s["sl"],
+                         "tp1": s["tp1"], "tp2": s["tp2"], "dist_pct": s["dist_pct"]})
+        del hist[:-300]                     # se guardan las ultimas 300 señales
     elif "--forzar" in sys.argv:
         enviar(cabecera(res, ses) + ("\n\n" + "\n\n➖➖➖\n\n".join(fmt_setup(s) for s in res["setups"]) if res["setups"] else "\n\n😴 Sin setups."))
     else:

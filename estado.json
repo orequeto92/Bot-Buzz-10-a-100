@@ -1,7 +1,1 @@
-{
- "alertas": {
-  "47e6ce8c59b4": 1786067079.584205
- },
- "update_id": 81399340,
- "saldo": 11.9
-}
+{"alertas":{"47e6ce8c59b4":1786067079.584205},"update_id":81399340,"saldo":11.9,"historial":[{"t":1786067040,"symbol":"WLDUSDT","lado":"short","calidad":"B","entrada":0.302567,"sl":0.309064,"tp1":0.296071,"tp2":0.289575,"dist_pct":2.15}]}
