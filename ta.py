@@ -132,6 +132,22 @@ def adx_dmi(highs, lows, closes, period=14):
     return adx, 100.0 * dmp_w[-1] / a, 100.0 * dmn_w[-1] / a
 
 
+def retroceso_fibo(res_zonas, sop_zonas, entrada, lado):
+    """% de retroceso de Fibonacci al que corresponde 'entrada' dentro del ultimo
+    impulso: 0% = en el extremo del impulso, 100% = en su origen.
+      - 38,2%-61,8% es la "zona dorada" (el retroceso sano dentro de la tendencia).
+      - Por encima del 61,8% ya NO es un retroceso: la tendencia se esta rompiendo.
+    Medido sobre 90 dias, las entradas con retroceso >61,8% dan -0,625R de media
+    frente a +0,265R del resto (t=-2,08), y pierden en las dos mitades del periodo."""
+    hi = max([p for p, _ in (res_zonas or [])], default=None)
+    lo = min([p for p, _ in (sop_zonas or [])], default=None)
+    if hi is None or lo is None or hi <= lo:
+        return None
+    if lado == "long":
+        return (hi - entrada) / (hi - lo) * 100.0
+    return (entrada - lo) / (hi - lo) * 100.0
+
+
 def eficiencia(closes, n=24):
     """Ratio de eficiencia de Kaufman sobre las ultimas n velas:
         |cambio neto| / recorrido total

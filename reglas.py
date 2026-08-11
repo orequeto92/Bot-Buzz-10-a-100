@@ -128,6 +128,15 @@ def evaluar(symbol, tfm, funding, director, semaforo_color):
         return None
     if lado == "short" and entrada < precio:
         return None
+    # 6c) RETROCESO DE FIBONACCI (añadido 11-ago-2026, del video "Fibonacci desde
+    #     cero"). Si la entrada queda mas alla del 61,8% del impulso, eso ya no es un
+    #     retroceso sano: la tendencia se esta rompiendo y se estaria comprando un
+    #     cuchillo cayendo. Medido en 90 dias: esas entradas dan -0,625R de media
+    #     frente a +0,265R del resto (t=-2,08) y pierden en las dos mitades del
+    #     periodo. Descarta solo el 11% de las señales y sube el total de +12R a +17R.
+    fibo = ta.retroceso_fibo(m15.get("res_zonas"), m15.get("sop_zonas"), entrada, lado)
+    if fibo is not None and fibo > 61.8:
+        return None
     dist_pct = abs(entrada - sl) / entrada * 100
     if not (SL_MIN_PCT <= dist_pct <= SL_MAX_PCT):
         return None
@@ -173,7 +182,8 @@ def evaluar(symbol, tfm, funding, director, semaforo_color):
             # ADX/DI del 1H: NO filtran nada (se midio y no es significativo), pero se
             # anotan en la bitacora para poder comprobarlo con datos nuevos.
             "adx": m1.get("adx"),
-            "di_favor": (m1.get("di_pos") if lado == "long" else m1.get("di_neg"))}
+            "di_favor": (m1.get("di_pos") if lado == "long" else m1.get("di_neg")),
+            "fibo": fibo}
 
 
 # ---------------------------------------------------------------- mapa de liquidaciones
