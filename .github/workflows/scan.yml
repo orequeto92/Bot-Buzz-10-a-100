@@ -2,10 +2,15 @@ name: Radar del Reto (LBank)
 
 on:
   schedule:
-    # Cada 15 min, TODOS los dias: asi los comandos de Telegram se responden
-    # siempre (con <=15 min de espera). Las alertas proactivas las filtra el
-    # propio bot.py (solo ventanas buenas de Medellin y solo entre semana).
-    - cron: "*/15 * * * *"
+    # OJO: el cron de GitHub NO se cumple. Medido sobre 94 ejecuciones reales, un
+    # "*/15" se convirtio en una ejecucion cada ~239 min (0 veces bajo 20 min). El
+    # repo xrp-signal-bot pide "*/5" y obtiene lo mismo (~230 min), asi que no es
+    # nuestra configuracion: es la cola de GitHub y no hay cron que lo arregle.
+    #
+    # Por eso el cron ya NO marca el ritmo: solo ARRANCA un trabajo que escanea en
+    # bucle por dentro cada 15 min (paso "Bucle de escaneo"). Se pide cada hora para
+    # que, aunque GitHub estrangule, alguna caiga dentro de cada ventana buena.
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       forzar:
@@ -23,14 +28,17 @@ concurrency:
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # El bucle dura como mucho 3 h; se deja margen para el arranque.
+    timeout-minutes: 200
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      # Sin dependencias: solo libreria estandar + APIs publicas.
-      - name: Escanear LBank y alertar
+
+      # Una sola pasada, para probar desde la pestaña Actions.
+      - name: Escaneo unico (manual)
+        if: github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -41,12 +49,34 @@ jobs:
           else
             python bot.py
           fi
-      - name: Guardar estado (anti-spam)
+
+      # Bucle: escanea cada 15 min durante 3 h. Asi la cadencia la marcamos
+      # nosotros y no la cola de GitHub. bot.py ya sale enseguida cuando esta
+      # fuera de ventana buena, asi que las vueltas ociosas cuestan segundos.
+      - name: Bucle de escaneo (cada 15 min durante 3 h)
+        if: github.event_name == 'schedule'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CAPITAL: ${{ secrets.CAPITAL }}
         run: |
-          if [[ -n $(git status --porcelain estado.json) ]]; then
-            git config user.name "radar-bot"
-            git config user.email "bot@users.noreply.github.com"
-            git add estado.json
-            git commit -m "estado [skip ci]"
-            git push
-          fi
+          git config user.name "radar-bot"
+          git config user.email "bot@users.noreply.github.com"
+          FIN=$(( $(date +%s) + 175*60 ))
+          VUELTA=0
+          while [ "$(date +%s)" -lt "$FIN" ]; do
+            VUELTA=$((VUELTA+1))
+            echo "--- vuelta $VUELTA · $(date -u '+%H:%M:%S') UTC ---"
+            python bot.py || echo "(fallo esta vuelta, se sigue)"
+            # Guardar solo si cambio algo, y no romper el bucle si el push falla.
+            if [[ -n "$(git status --porcelain estado.json)" ]]; then
+              git add estado.json
+              git commit -m "estado [skip ci]" || true
+              git pull --rebase --quiet || true
+              git push || echo "(push fallido, se reintenta en la siguiente vuelta)"
+            fi
+            # No dormir si ya no da tiempo a otra vuelta.
+            [ $(( $(date +%s) + 900 )) -lt "$FIN" ] || break
+            sleep 900
+          done
+          echo "Bucle terminado tras $VUELTA vueltas."
