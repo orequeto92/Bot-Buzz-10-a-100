@@ -169,7 +169,11 @@ def evaluar(symbol, tfm, funding, director, semaforo_color):
         return None
     return {"symbol": symbol, "lado": lado, "calidad": calidad, "score": score,
             "precio": precio, "entrada": entrada, "sl": sl, "tp1": tp1, "tp2": tp2,
-            "dist_pct": dist_pct, "conf": conf, "funding": funding}
+            "dist_pct": dist_pct, "conf": conf, "funding": funding,
+            # ADX/DI del 1H: NO filtran nada (se midio y no es significativo), pero se
+            # anotan en la bitacora para poder comprobarlo con datos nuevos.
+            "adx": m1.get("adx"),
+            "di_favor": (m1.get("di_pos") if lado == "long" else m1.get("di_neg"))}
 
 
 # ---------------------------------------------------------------- mapa de liquidaciones

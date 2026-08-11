@@ -89,25 +89,86 @@ def classify_structure(sh, sl):
     tags = [t for t,c in [("HH",hh),("HL",hl),("LH",lh),("LL",ll)] if c]
     return trend, tags
 
+def adx_dmi(highs, lows, closes, period=14):
+    """ADX + DMI (Wilder). Devuelve (adx, di_pos, di_neg) del ultimo valor.
+      - ADX mide la FUERZA de la tendencia, sin decir la direccion. >25 = tendencia
+        establecida; <20 = rango. Es el filtro estandar de la industria y el que
+        usa el screener del video de CriptoBuzz.
+      - DI+ / DI- dan la direccion: DI+ por encima = compradores mandando.
+    Se calculan con suavizado de Wilder (no EMA), como en TradingView."""
+    n = len(closes)
+    if n < period * 2 + 1:
+        return None, None, None
+    tr, dm_p, dm_n = [], [], []
+    for i in range(1, n):
+        tr.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+        up, dn = highs[i] - highs[i-1], lows[i-1] - lows[i]
+        dm_p.append(up if (up > dn and up > 0) else 0.0)
+        dm_n.append(dn if (dn > up and dn > 0) else 0.0)
+    # suavizado de Wilder: primer valor = suma, luego resta la media y suma el nuevo
+    def wilder(v):
+        s = sum(v[:period])
+        out = [s]
+        for x in v[period:]:
+            s = s - s / period + x
+            out.append(s)
+        return out
+    atr_w, dmp_w, dmn_w = wilder(tr), wilder(dm_p), wilder(dm_n)
+    dxs = []
+    for a, p, m in zip(atr_w, dmp_w, dmn_w):
+        if a <= 0:
+            continue
+        dip, din = 100.0 * p / a, 100.0 * m / a
+        s = dip + din
+        dxs.append(100.0 * abs(dip - din) / s if s > 0 else 0.0)
+    if len(dxs) < period:
+        return None, None, None
+    adx = sum(dxs[:period]) / period
+    for x in dxs[period:]:
+        adx = (adx * (period - 1) + x) / period
+    a = atr_w[-1]
+    if a <= 0:
+        return None, None, None
+    return adx, 100.0 * dmp_w[-1] / a, 100.0 * dmn_w[-1] / a
+
+
+def eficiencia(closes, n=24):
+    """Ratio de eficiencia de Kaufman sobre las ultimas n velas:
+        |cambio neto| / recorrido total
+    Va de 0 a 1. Cerca de 1 = el precio avanza en linea recta (TENDENCIA, terreno
+    favorable para entrar en retrocesos). Cerca de 0 = mucho movimiento y ningun
+    avance (LATIGAZO/RANGO, donde una estrategia de retroceso se desangra)."""
+    if len(closes) < n + 1:
+        return None
+    tramo = closes[-(n + 1):]
+    neto = abs(tramo[-1] - tramo[0])
+    recorrido = sum(abs(tramo[i] - tramo[i - 1]) for i in range(1, len(tramo)))
+    if recorrido <= 0:
+        return None
+    return neto / recorrido
+
+
 def zonas_por_toques(pivotes, tol):
     """Agrupa niveles de pivote cercanos (dentro de 'tol') en ZONAS y cuenta cuantas
-    veces reacciono el precio ahi. Una zona vale mas cuantos mas toques tiene.
-    Devuelve [(nivel_medio, n_toques), ...] mas fuerte primero."""
+    veces reacciono el precio ahi. Una zona vale mas cuantos mas toques tiene: el
+    mentor lo resume como 'esta zona ha tenido muchos toques y esta ninguno, para
+    nosotros este soporte es mas importante'. Devuelve [(nivel_medio, n_toques), ...]."""
     if not pivotes:
         return []
     ps = sorted(p for (_, p) in pivotes)
     grupos = []
     actual = [ps[0]]
     for p in ps[1:]:
-        # Se compara contra el MINIMO del grupo, no contra el ultimo punto, para que
-        # una fila de pivotes poco separados no se funda en una "zona" enorme.
+        # Se compara contra el MINIMO del grupo, no contra el ultimo punto: si se
+        # encadenase punto a punto, una fila de pivotes poco separados acabaria
+        # fundiendose en una "zona" enorme y el nivel medio no significaria nada.
         if p - actual[0] <= tol:
             actual.append(p)
         else:
             grupos.append(actual); actual = [p]
     grupos.append(actual)
     zonas = [(sum(g) / len(g), len(g)) for g in grupos]
-    zonas.sort(key=lambda z: -z[1])
+    zonas.sort(key=lambda z: -z[1])          # mas tocadas primero
     return zonas
 
 def detect_divergence(closes, rsis, sh, sl):
@@ -187,6 +248,10 @@ def compute(symbol, tf, candles):
     sop = sorted([p for (_,p) in sl if p < price], reverse=True)[:3]
     vol_avg = sum(v[-20:]) / min(20, len(v)) if v else 0
 
+    _adx, _dip, _din = adx_dmi(h, l, c, 14)
+
+    # Zonas por nº de toques: agrupa pivotes cercanos y cuenta reacciones.
+    # tolerancia = 0.6 x ATR (o 0.4% del precio si no hay ATR).
     tol = (a * 0.6) if a else (price * 0.004)
     res_zonas = [(lvl, n_t) for (lvl, n_t) in zonas_por_toques(sh, tol) if lvl > price][:3]
     sop_zonas = [(lvl, n_t) for (lvl, n_t) in zonas_por_toques(sl, tol) if lvl < price][:3]
@@ -227,6 +292,9 @@ def compute(symbol, tf, candles):
         "ema13": e13[-1], "ema50": e50[-1], "ema200": e200[-1],
         "rsi": rsis[-1], "atr": a, "atr_pct": (a/price*100) if a else None,
         "compresion": compresion,
+        "er": eficiencia(c, 24),            # regimen a corto (1 dia en 1H)
+        "er_largo": eficiencia(c, 168),     # regimen a 7 dias en 1H (separa mejor)
+        "adx": _adx, "di_pos": _dip, "di_neg": _din,
         "trend": trend, "tags": tags, "bias": bias,
         "divergences": divs, "fvgs": fvgs,
         "resistances": res, "supports": sop,
@@ -250,7 +318,13 @@ def format_summary(m):
     L.append(f"  Sesgo:{m['bias']} | Estructura:{m['trend']} ({'/'.join(m['tags']) or '-'}) | ATR {g(m['atr'])} ({g(m['atr_pct'],3)}%) {m.get('compresion') or ''}")
     if m.get("compresion") == "COMPRIMIDO":
         L.append("  *** VOLATILIDAD COMPRIMIDA: posible breakout preparandose, vigilar de cerca")
-    L.append(f"  Resist: {', '.join(g(x) for x in m['resistances']) or '-'}   Soportes: {', '.join(g(x) for x in m['supports']) or '-'}")
+    def _z(zonas):
+        # nivel xN, donde N = nº de toques (una zona con mas toques es mas fuerte)
+        return ", ".join(("%s x%d" % (g(lvl), nt)) if nt > 1 else g(lvl) for lvl, nt in zonas) or "-"
+    if m.get("res_zonas") is not None or m.get("sop_zonas") is not None:
+        L.append(f"  Resist(toques): {_z(m.get('res_zonas') or [])}   Soportes(toques): {_z(m.get('sop_zonas') or [])}")
+    else:
+        L.append(f"  Resist: {', '.join(g(x) for x in m['resistances']) or '-'}   Soportes: {', '.join(g(x) for x in m['supports']) or '-'}")
     if m.get("zona"):
         tag = ""
         if "DISCOUNT" in m["zona"]: tag = " [zona de COMPRA]"

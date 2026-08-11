@@ -226,7 +226,8 @@ def main():
         for s in nuevos:
             hist.append({"t": int(ahora), "symbol": s["symbol"], "lado": s["lado"],
                          "calidad": s["calidad"], "entrada": s["entrada"], "sl": s["sl"],
-                         "tp1": s["tp1"], "tp2": s["tp2"], "dist_pct": s["dist_pct"]})
+                         "tp1": s["tp1"], "tp2": s["tp2"], "dist_pct": s["dist_pct"],
+                         "adx": s.get("adx"), "di": s.get("di_favor")})
         del hist[:-300]                     # se guardan las ultimas 300 señales
     elif "--forzar" in sys.argv:
         enviar(cabecera(res, ses) + ("\n\n" + "\n\n➖➖➖\n\n".join(fmt_setup(s) for s in res["setups"]) if res["setups"] else "\n\n😴 Sin setups."))
