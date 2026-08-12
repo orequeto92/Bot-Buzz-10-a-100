@@ -81,7 +81,11 @@ def g(x, p=6):
 
 
 def firma(s):
-    return hashlib.md5(("%s|%s|%s|%.4g" % (s["symbol"], s["lado"], s["calidad"], s["entrada"])).encode()).hexdigest()[:12]
+    # Solo simbolo + direccion: el precio de entrada oscila entre escaneos de 15 min
+    # (redondeaba distinto con %.4g y burlaba el anti-spam) y la calidad A/B puede
+    # cambiar por un umbral limite sin ser una operacion nueva. Misma moneda + mismo
+    # lado dentro de las 6h = misma alerta, se calle.
+    return hashlib.md5(("%s|%s" % (s["symbol"], s["lado"])).encode()).hexdigest()[:12]
 
 
 def fmt_setup(s):
@@ -93,7 +97,7 @@ def fmt_setup(s):
          f"🛑 SL: <code>{g(s['sl'])}</code>  ({s['dist_pct']:.2f}%)",
          f"🎯 TP1: <code>{g(s['tp1'])}</code> (50% + BE)   🎯 TP2: <code>{g(s['tp2'])}</code>", "",
          f"⚙️ {s['lev']}x aislado · margen ${s['margen']:.2f}",
-         f"⚖️ Riesgo -${s['riesgo_usd']:.2f} / +${s['neto_tp2']:.2f} neto (R:R 1:2)"]
+         f"⚖️ Riesgo -${s['riesgo_usd']:.2f} / +${s['neto']:.2f} neto (50% TP1 + 50% TP2)"]
     if s.get("liq_nivel"):
         L.append(f"💥 Cúmulo liquidaciones: <code>{g(s['liq_nivel'])}</code> "
                  f"({s.get('liq_dist_pct',0):+.1f}%, fuerza {s['liq_fuerza']/1e6:.0f}M) — imán del precio")
