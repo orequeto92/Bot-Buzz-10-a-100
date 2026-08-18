@@ -1,0 +1,99 @@
+name: Radar del Reto (LBank)
+
+on:
+  schedule:
+    # OJO: el cron de GitHub NO se cumple. Medido sobre 94 ejecuciones reales, un
+    # "*/15" se convirtio en una ejecucion cada ~239 min (0 veces bajo 20 min). El
+    # repo xrp-signal-bot pide "*/5" y obtiene lo mismo (~230 min), asi que no es
+    # nuestra configuracion: es la cola de GitHub y no hay cron que lo arregle.
+    #
+    # Por eso el cron ya NO marca el ritmo: solo ARRANCA un trabajo que escanea en
+    # bucle por dentro cada 15 min (paso "Bucle de escaneo"). Se pide cada hora para
+    # que, aunque GitHub estrangule, alguna caiga dentro de cada ventana buena.
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      forzar:
+        description: "Enviar informe aunque no haya setup (para probar)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    # El bucle dura como mucho 3 h; se deja margen para el arranque.
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Una sola pasada, para probar desde la pestaña Actions.
+      - name: Escaneo unico (manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CAPITAL: ${{ secrets.CAPITAL }}
+        run: |
+          if [[ "${{ inputs.forzar }}" == "true" ]]; then
+            python bot.py --forzar
+          else
+            python bot.py
+          fi
+
+      # Bucle: escanea cada 15 min durante 3 h. Asi la cadencia la marcamos
+      # nosotros y no la cola de GitHub. bot.py ya sale enseguida cuando esta
+      # fuera de ventana buena, asi que las vueltas ociosas cuestan segundos.
+      - name: Bucle de escaneo (cada 15 min durante 3 h)
+        if: github.event_name == 'schedule'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CAPITAL: ${{ secrets.CAPITAL }}
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "bot@users.noreply.github.com"
+          FIN=$(( $(date +%s) + 175*60 ))
+          VUELTA=0
+          while [ "$(date +%s)" -lt "$FIN" ]; do
+            VUELTA=$((VUELTA+1))
+            echo "--- vuelta $VUELTA · $(date -u '+%H:%M:%S') UTC ---"
+            python bot.py || echo "(fallo esta vuelta, se sigue)"
+            # Guardar solo si cambio algo, y no romper el bucle si el push falla.
+            # OJO (18-ago-2026): antes se usaba "git pull --rebase". Si esa rebase
+            # chocaba, dejaba estado.json con marcadores de conflicto "<<<<<<<"
+            # escritos en el propio archivo -> JSON invalido -> cargar() lo lee como
+            # vacio -> el anti-spam se resetea y repite alertas el resto del bucle.
+            # "merge -X ours" no puede dejar el archivo a medias: en cualquier
+            # choque se queda con NUESTRA version (somos el unico escritor real
+            # de este archivo), y si el merge no puede ni empezar, se aborta limpio.
+            if [[ -n "$(git status --porcelain estado.json)" ]]; then
+              git add estado.json
+              git commit -m "estado [skip ci]" || true
+              enviado=0
+              for intento in 1 2 3; do
+                if git push --quiet 2>/dev/null; then enviado=1; break; fi
+                git fetch origin main --quiet
+                if git merge -X ours --no-edit origin/main --quiet; then
+                  continue
+                else
+                  git merge --abort 2>/dev/null || true
+                  break
+                fi
+              done
+              [ "$enviado" = "1" ] || echo "(push fallido tras reintentos, se sigue con el estado local)"
+            fi
+            # No dormir si ya no da tiempo a otra vuelta.
+            [ $(( $(date +%s) + 900 )) -lt "$FIN" ] || break
+            sleep 900
+          done
+          echo "Bucle terminado tras $VUELTA vueltas."
